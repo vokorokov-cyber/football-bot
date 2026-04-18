@@ -15,19 +15,6 @@ router = Router()
 async def echo(message: Message):
     await message.answer("Бот работает ⚽")
 
-async def main():
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
-
-    dp.include_router(router)
-
-    print("Бот запущен...")
-    await start_web_server()
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
 import asyncio
 import os
 from aiohttp import web
@@ -44,3 +31,17 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
+
+async def main():
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher()
+
+    dp.include_router(router)
+
+    print("Бот запущен...")
+    await start_web_server()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
