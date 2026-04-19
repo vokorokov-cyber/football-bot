@@ -15,7 +15,6 @@ logging.basicConfig(level=logging.INFO)
 
 router = Router()
 
-
 # ---------------- КНОПКИ ----------------
 
 main_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -32,24 +31,24 @@ categories_kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="✅ Готово", callback_data="done")]
 ])
 
-
 # ---------------- FSM ----------------
 
 class Support(StatesGroup):
     message = State()
 
-
 # ---------------- ДАННЫЕ ----------------
 
 user_subscriptions = {}
-
+support_map = {}  # связь сообщений (админ -> пользователь)
 
 # ---------------- START ----------------
 
 @router.message(Command("start"))
 async def start(message: Message):
-    await message.answer("⚽ Привет!\nВыбери, что тебе нужно:", reply_markup=main_kb)
-
+    await message.answer(
+        "⚽ Привет!\nВыбери, что тебе нужно:",
+        reply_markup=main_kb
+    )
 
 # ---------------- ПОДПИСКА ----------------
 
@@ -97,7 +96,6 @@ async def done(callback: CallbackQuery):
 
     await callback.answer()
 
-
 # ---------------- МОИ ПОДПИСКИ ----------------
 
 @router.callback_query(F.data == "my_subs")
@@ -110,7 +108,6 @@ async def my_subs(callback: CallbackQuery):
         await callback.message.answer("Твои подписки:\n" + "\n".join(subs))
 
     await callback.answer()
-
 
 # ---------------- ПОДДЕРЖКА ----------------
 
@@ -125,18 +122,45 @@ async def support_start(callback: CallbackQuery, state: FSMContext):
 async def support_msg(message: Message, state: FSMContext):
     user = message.from_user
 
-    await message.answer("✅ Отправлено")
+    await message.answer("✅ Сообщение отправлено")
 
-    await message.bot.send_message(
+    admin_msg = await message.bot.send_message(
         ADMIN_ID,
-        f"💬 Сообщение\n\n"
-        f"@{user.username}\n"
-        f"ID: {user.id}\n\n"
+        f"💬 Новое сообщение\n\n"
+        f"👤 @{user.username}\n"
+        f"🆔 {user.id}\n\n"
         f"{message.text}"
     )
 
+    # сохраняем связь (очень важно)
+    support_map[admin_msg.message_id] = user.id
+
     await state.clear()
 
+# ---------------- ОТВЕТ АДМИНА (ЧАТ) ----------------
+
+@router.message()
+async def admin_reply(message: Message):
+    # только админ
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    # должен быть ответ на сообщение
+    if not message.reply_to_message:
+        return
+
+    replied_id = message.reply_to_message.message_id
+
+    if replied_id not in support_map:
+        return
+
+    user_id = support_map[replied_id]
+
+    try:
+        await message.bot.send_message(user_id, message.text)
+        await message.answer("✅ Отправлено")
+    except:
+        await message.answer("❌ Ошибка отправки")
 
 # ---------------- WEB SERVER ----------------
 
@@ -153,7 +177,6 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-
 
 # ---------------- ЗАПУСК ----------------
 
