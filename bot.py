@@ -1,14 +1,21 @@
 import asyncio
 import logging
+import os
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.state import State, StatesGroup
-class Support(StatesGroup):
-    message = State()
 from aiogram.fsm.context import FSMContext
+from aiohttp import web
 
-from config import BOT_TOKEN
+from config import BOT_TOKEN, ADMIN_ID
+
+logging.basicConfig(level=logging.INFO)
+
+router = Router()
+
+
+# ---------------- КЛАВИАТУРЫ ----------------
 
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
@@ -30,15 +37,19 @@ categories_kb = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+
+# ---------------- FSM ----------------
+
+class Support(StatesGroup):
+    message = State()
+
+
+# ---------------- ВРЕМЕННОЕ ХРАНЕНИЕ ----------------
+
 user_subscriptions = {}
 
-logging.basicConfig(level=logging.INFO)
 
-router = Router()
-
-@router.message()
-async def echo(message: Message):
-    await message.answer("Бот работает ⚽")
+# ---------------- ОСНОВНЫЕ КОМАНДЫ ----------------
 
 @router.message(F.text == "/start")
 async def start(message: Message):
@@ -47,6 +58,9 @@ async def start(message: Message):
         reply_markup=main_kb
     )
 
+
+# ---------------- ПОДПИСКА ----------------
+
 @router.message(F.text == "📩 Получать приглашения")
 async def subscribe(message: Message):
     user_subscriptions[message.from_user.id] = []
@@ -54,6 +68,7 @@ async def subscribe(message: Message):
         "Выбери категории турниров:",
         reply_markup=categories_kb
     )
+
 
 @router.message(F.text.in_(["⚽ Взрослые", "🧒 До 15", "🧑 До 17", "🧑‍🦱 До 20"]))
 async def select_category(message: Message):
@@ -66,6 +81,7 @@ async def select_category(message: Message):
         user_subscriptions[user_id].append(message.text)
 
     await message.answer(f"Добавлено: {message.text}")
+
 
 @router.message(F.text == "✅ Готово")
 async def finish_subscribe(message: Message):
@@ -81,6 +97,8 @@ async def finish_subscribe(message: Message):
     )
 
 
+# ---------------- МОИ ПОДПИСКИ ----------------
+
 @router.message(F.text == "⚙️ Мои подписки")
 async def my_subs(message: Message):
     subs = user_subscriptions.get(message.from_user.id, [])
@@ -91,17 +109,13 @@ async def my_subs(message: Message):
         await message.answer("Твои подписки:\n" + "\n".join(subs))
 
 
-
-
-
-
-
-
+# ---------------- ПОДДЕРЖКА ----------------
 
 @router.message(F.text == "💬 Поддержка и обратная связь")
 async def support_start(message: Message, state: FSMContext):
     await message.answer("Напиши свой вопрос или сообщение:")
     await state.set_state(Support.message)
+
 
 @router.message(Support.message)
 async def support_message(message: Message, state: FSMContext):
@@ -120,15 +134,11 @@ async def support_message(message: Message, state: FSMContext):
     await state.clear()
 
 
-import asyncio
-import os
-from aiohttp import web
-
-class Support(StatesGroup):
-    message = State()
+# ---------------- WEB SERVER (для Render) ----------------
 
 async def handle(request):
     return web.Response(text="Bot is running")
+
 
 async def start_web_server():
     app = web.Application()
@@ -140,6 +150,9 @@ async def start_web_server():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
+
+# ---------------- ЗАПУСК ----------------
+
 async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
@@ -147,9 +160,10 @@ async def main():
     dp.include_router(router)
 
     print("Бот запущен...")
+
     await start_web_server()
     await dp.start_polling(bot)
 
+
 if __name__ == "__main__":
     asyncio.run(main())
-
