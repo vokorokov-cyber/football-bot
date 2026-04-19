@@ -51,7 +51,9 @@ user_subscriptions = {}
 
 # ---------------- ОСНОВНЫЕ КОМАНДЫ ----------------
 
-@router.message(F.text == "/start")
+from aiogram.filters import Command
+
+@router.message(Command("start"))
 async def start(message: Message):
     await message.answer(
         "⚽ Привет!\nВыбери, что тебе нужно:",
