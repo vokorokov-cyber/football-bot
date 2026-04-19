@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command
 from aiohttp import web
 
 from config import BOT_TOKEN, ADMIN_ID
@@ -49,9 +50,7 @@ class Support(StatesGroup):
 user_subscriptions = {}
 
 
-# ---------------- ОСНОВНЫЕ КОМАНДЫ ----------------
-
-from aiogram.filters import Command
+# ---------------- START ----------------
 
 @router.message(Command("start"))
 async def start(message: Message):
