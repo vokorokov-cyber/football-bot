@@ -3,7 +3,12 @@ import logging
 import os
 
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import (
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    CallbackQuery
+)
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
@@ -15,98 +20,155 @@ logging.basicConfig(level=logging.INFO)
 
 router = Router()
 
-# ---------------- КНОПКИ ----------------
+# ---------------- КАТЕГОРИИ ----------------
 
-main_kb = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="📩 Получать приглашения", callback_data="subscribe")],
-    [InlineKeyboardButton(text="⚙️ Мои подписки", callback_data="my_subs")],
-    [InlineKeyboardButton(text="💬 Поддержка", callback_data="support")]
-])
+CATEGORIES = {
+    "adult": "⚽ Взрослые",
+    "u15": "🧒 До 15",
+    "u17": "🧑 До 17",
+    "u20": "🧑‍🦱 До 20",
+}
 
-categories_kb = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="⚽ Взрослые", callback_data="cat_adult")],
-    [InlineKeyboardButton(text="🧒 До 15", callback_data="cat_15")],
-    [InlineKeyboardButton(text="🧑 До 17", callback_data="cat_17")],
-    [InlineKeyboardButton(text="🧑‍🦱 До 20", callback_data="cat_20")],
-    [InlineKeyboardButton(text="✅ Готово", callback_data="done")]
-])
+# ---------------- ДАННЫЕ ----------------
+
+# user_id -> set(category_keys)
+user_subscriptions = {}
+
+# message_id (админ) -> user_id
+support_map = {}
 
 # ---------------- FSM ----------------
 
 class Support(StatesGroup):
     message = State()
 
-# ---------------- ДАННЫЕ ----------------
+# ---------------- UI ----------------
 
-user_subscriptions = {}
-support_map = {}  # связь сообщений (админ -> пользователь)
+def main_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📩 Подписки", callback_data="subs")],
+        [InlineKeyboardButton(text="⚙️ Мои подписки", callback_data="my_subs")],
+        [InlineKeyboardButton(text="💬 Поддержка", callback_data="support")]
+    ])
+
+
+def categories_kb(user_id: int):
+    subs = user_subscriptions.get(user_id, set())
+
+    rows = []
+
+    for key, label in CATEGORIES.items():
+        prefix = "✅ " if key in subs else ""
+        rows.append([
+            InlineKeyboardButton(
+                text=prefix + label,
+                callback_data=f"toggle:{key}"
+            )
+        ])
+
+    rows.append([InlineKeyboardButton(text="✔️ Готово", callback_data="done")])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def manage_kb(user_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Изменить", callback_data="subs")],
+        [InlineKeyboardButton(text="🚫 Отписаться от всего", callback_data="unsub_all")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+    ])
 
 # ---------------- START ----------------
 
 @router.message(Command("start"))
 async def start(message: Message):
     await message.answer(
-        "⚽ Привет!\nВыбери, что тебе нужно:",
-        reply_markup=main_kb
+        "⚽ Добро пожаловать!\nВыбери действие:",
+        reply_markup=main_kb()
     )
 
 # ---------------- ПОДПИСКА ----------------
 
-@router.callback_query(F.data == "subscribe")
-async def subscribe(callback: CallbackQuery):
-    user_subscriptions[callback.from_user.id] = []
-    await callback.message.answer("Выбери категории:", reply_markup=categories_kb)
+@router.callback_query(F.data == "subs")
+async def subs(callback: CallbackQuery):
+    user_id = callback.from_user.id
+
+    if user_id not in user_subscriptions:
+        user_subscriptions[user_id] = set()
+
+    await callback.message.edit_text(
+        "Выбери категории турниров:",
+        reply_markup=categories_kb(user_id)
+    )
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("cat_"))
-async def select_category(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("toggle:"))
+async def toggle_category(callback: CallbackQuery):
     user_id = callback.from_user.id
-
-    mapping = {
-        "cat_adult": "⚽ Взрослые",
-        "cat_15": "🧒 До 15",
-        "cat_17": "🧑 До 17",
-        "cat_20": "🧑‍🦱 До 20"
-    }
-
-    category = mapping.get(callback.data)
+    key = callback.data.split(":")[1]
 
     if user_id not in user_subscriptions:
-        user_subscriptions[user_id] = []
+        user_subscriptions[user_id] = set()
 
-    if category not in user_subscriptions[user_id]:
-        user_subscriptions[user_id].append(category)
+    if key in user_subscriptions[user_id]:
+        user_subscriptions[user_id].remove(key)
+    else:
+        user_subscriptions[user_id].add(key)
 
-    await callback.message.answer(f"Добавлено: {category}")
+    await callback.message.edit_reply_markup(
+        reply_markup=categories_kb(user_id)
+    )
     await callback.answer()
 
 
 @router.callback_query(F.data == "done")
 async def done(callback: CallbackQuery):
-    subs = user_subscriptions.get(callback.from_user.id, [])
+    user_id = callback.from_user.id
+    subs = user_subscriptions.get(user_id, set())
 
     if not subs:
-        await callback.message.answer("Ты ничего не выбрал 😅")
+        text = "Ты пока не подписан ни на одну категорию"
     else:
-        await callback.message.answer(
-            "✅ Подписка:\n" + "\n".join(subs),
-            reply_markup=main_kb
-        )
+        text = "✅ Твои подписки:\n\n" + "\n".join(CATEGORIES[s] for s in subs)
 
+    await callback.message.edit_text(text, reply_markup=main_kb())
     await callback.answer()
 
 # ---------------- МОИ ПОДПИСКИ ----------------
 
 @router.callback_query(F.data == "my_subs")
 async def my_subs(callback: CallbackQuery):
-    subs = user_subscriptions.get(callback.from_user.id, [])
+    subs = user_subscriptions.get(callback.from_user.id, set())
 
     if not subs:
-        await callback.message.answer("У тебя нет подписок")
+        text = "У тебя нет подписок"
     else:
-        await callback.message.answer("Твои подписки:\n" + "\n".join(subs))
+        text = "Твои подписки:\n\n" + "\n".join(CATEGORIES[s] for s in subs)
 
+    await callback.message.edit_text(text, reply_markup=manage_kb(callback.from_user.id))
+    await callback.answer()
+
+# ---------------- ОТПИСКА ----------------
+
+@router.callback_query(F.data == "unsub_all")
+async def unsub_all(callback: CallbackQuery):
+    user_subscriptions[callback.from_user.id] = set()
+
+    await callback.message.edit_text(
+        "🚫 Ты отписался от всех категорий",
+        reply_markup=main_kb()
+    )
+    await callback.answer()
+
+# ---------------- НАВИГАЦИЯ ----------------
+
+@router.callback_query(F.data == "back")
+async def back(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "Главное меню:",
+        reply_markup=main_kb()
+    )
     await callback.answer()
 
 # ---------------- ПОДДЕРЖКА ----------------
@@ -122,30 +184,27 @@ async def support_start(callback: CallbackQuery, state: FSMContext):
 async def support_msg(message: Message, state: FSMContext):
     user = message.from_user
 
-    await message.answer("✅ Сообщение отправлено")
+    await message.answer("✅ Отправлено")
 
     admin_msg = await message.bot.send_message(
         ADMIN_ID,
-        f"💬 Новое сообщение\n\n"
+        f"💬 Сообщение\n\n"
         f"👤 @{user.username}\n"
         f"🆔 {user.id}\n\n"
         f"{message.text}"
     )
 
-    # сохраняем связь (очень важно)
     support_map[admin_msg.message_id] = user.id
 
     await state.clear()
 
-# ---------------- ОТВЕТ АДМИНА (ЧАТ) ----------------
+# ---------------- ОТВЕТ КАК ЧАТ ----------------
 
 @router.message()
 async def admin_reply(message: Message):
-    # только админ
     if message.from_user.id != ADMIN_ID:
         return
 
-    # должен быть ответ на сообщение
     if not message.reply_to_message:
         return
 
@@ -156,16 +215,12 @@ async def admin_reply(message: Message):
 
     user_id = support_map[replied_id]
 
-    try:
-        await message.bot.send_message(user_id, message.text)
-        await message.answer("✅ Отправлено")
-    except:
-        await message.answer("❌ Ошибка отправки")
+    await message.bot.send_message(user_id, message.text)
 
 # ---------------- WEB SERVER ----------------
 
 async def handle(request):
-    return web.Response(text="Bot is running")
+    return web.Response(text="OK")
 
 
 async def start_web_server():
@@ -178,7 +233,7 @@ async def start_web_server():
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
 
-# ---------------- ЗАПУСК ----------------
+# ---------------- MAIN ----------------
 
 async def main():
     bot = Bot(token=BOT_TOKEN)
@@ -186,11 +241,10 @@ async def main():
 
     dp.include_router(router)
 
-    print("Бот запущен...")
+    print("Бот запущен")
 
     await start_web_server()
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
