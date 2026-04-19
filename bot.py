@@ -16,6 +16,9 @@ from aiohttp import web
 
 from config import BOT_TOKEN, ADMIN_ID
 
+# 🔥 БАЗА
+from db import init_db, add_user, get_subscriptions, toggle_subscription, clear_subscriptions
+
 logging.basicConfig(level=logging.INFO)
 
 router = Router()
@@ -29,12 +32,8 @@ CATEGORIES = {
     "u20": "🧑‍🦱 До 20",
 }
 
-# ---------------- ДАННЫЕ ----------------
+# ---------------- SUPPORT MAP ----------------
 
-# user_id -> set(category_keys)
-user_subscriptions = {}
-
-# message_id (админ) -> user_id
 support_map = {}
 
 # ---------------- FSM ----------------
@@ -52,8 +51,8 @@ def main_kb():
     ])
 
 
-def categories_kb(user_id: int):
-    subs = user_subscriptions.get(user_id, set())
+async def categories_kb(user_id: int):
+    subs = await get_subscriptions(user_id)
 
     rows = []
 
@@ -71,7 +70,7 @@ def categories_kb(user_id: int):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def manage_kb(user_id: int):
+def manage_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ Изменить", callback_data="subs")],
         [InlineKeyboardButton(text="🚫 Отписаться от всего", callback_data="unsub_all")],
@@ -82,6 +81,8 @@ def manage_kb(user_id: int):
 
 @router.message(Command("start"))
 async def start(message: Message):
+    await add_user(message.from_user.id)
+
     await message.answer(
         "⚽ Добро пожаловать!\nВыбери действие:",
         reply_markup=main_kb()
@@ -91,14 +92,11 @@ async def start(message: Message):
 
 @router.callback_query(F.data == "subs")
 async def subs(callback: CallbackQuery):
-    user_id = callback.from_user.id
-
-    if user_id not in user_subscriptions:
-        user_subscriptions[user_id] = set()
+    kb = await categories_kb(callback.from_user.id)
 
     await callback.message.edit_text(
         "Выбери категории турниров:",
-        reply_markup=categories_kb(user_id)
+        reply_markup=kb
     )
     await callback.answer()
 
@@ -108,24 +106,17 @@ async def toggle_category(callback: CallbackQuery):
     user_id = callback.from_user.id
     key = callback.data.split(":")[1]
 
-    if user_id not in user_subscriptions:
-        user_subscriptions[user_id] = set()
+    await toggle_subscription(user_id, key)
 
-    if key in user_subscriptions[user_id]:
-        user_subscriptions[user_id].remove(key)
-    else:
-        user_subscriptions[user_id].add(key)
+    kb = await categories_kb(user_id)
 
-    await callback.message.edit_reply_markup(
-        reply_markup=categories_kb(user_id)
-    )
+    await callback.message.edit_reply_markup(reply_markup=kb)
     await callback.answer()
 
 
 @router.callback_query(F.data == "done")
 async def done(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    subs = user_subscriptions.get(user_id, set())
+    subs = await get_subscriptions(callback.from_user.id)
 
     if not subs:
         text = "Ты пока не подписан ни на одну категорию"
@@ -139,21 +130,21 @@ async def done(callback: CallbackQuery):
 
 @router.callback_query(F.data == "my_subs")
 async def my_subs(callback: CallbackQuery):
-    subs = user_subscriptions.get(callback.from_user.id, set())
+    subs = await get_subscriptions(callback.from_user.id)
 
     if not subs:
         text = "У тебя нет подписок"
     else:
         text = "Твои подписки:\n\n" + "\n".join(CATEGORIES[s] for s in subs)
 
-    await callback.message.edit_text(text, reply_markup=manage_kb(callback.from_user.id))
+    await callback.message.edit_text(text, reply_markup=manage_kb())
     await callback.answer()
 
 # ---------------- ОТПИСКА ----------------
 
 @router.callback_query(F.data == "unsub_all")
 async def unsub_all(callback: CallbackQuery):
-    user_subscriptions[callback.from_user.id] = set()
+    await clear_subscriptions(callback.from_user.id)
 
     await callback.message.edit_text(
         "🚫 Ты отписался от всех категорий",
@@ -240,6 +231,9 @@ async def main():
     dp = Dispatcher()
 
     dp.include_router(router)
+
+    # 🔥 ИНИЦИАЛИЗАЦИЯ БАЗЫ
+    await init_db()
 
     print("Бот запущен")
 
