@@ -24,7 +24,9 @@ main_kb = ReplyKeyboardMarkup(
         [KeyboardButton(text="⚙️ Мои подписки")],
         [KeyboardButton(text="💬 Поддержка и обратная связь")]
     ],
-    resize_keyboard=True
+    resize_keyboard=True,
+    one_time_keyboard=False,
+    input_field_placeholder="Выбери действие 👇"
 )
 
 categories_kb = ReplyKeyboardMarkup(
@@ -35,7 +37,8 @@ categories_kb = ReplyKeyboardMarkup(
         [KeyboardButton(text="🧑‍🦱 До 20")],
         [KeyboardButton(text="✅ Готово")]
     ],
-    resize_keyboard=True
+    resize_keyboard=True,
+    one_time_keyboard=False
 )
 
 
@@ -54,8 +57,9 @@ user_subscriptions = {}
 
 @router.message(Command("start"))
 async def start(message: Message):
+    await message.answer("⚽ Привет!")
     await message.answer(
-        "⚽ Привет!\nВыбери, что тебе нужно:",
+        "Выбери, что тебе нужно:",
         reply_markup=main_kb
     )
 
@@ -135,7 +139,17 @@ async def support_message(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ---------------- WEB SERVER (для Render) ----------------
+# ---------------- DEBUG (гарантирует кнопки) ----------------
+
+@router.message()
+async def fallback(message: Message):
+    await message.answer(
+        "👇 Используй кнопки ниже",
+        reply_markup=main_kb
+    )
+
+
+# ---------------- WEB SERVER ----------------
 
 async def handle(request):
     return web.Response(text="Bot is running")
