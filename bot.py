@@ -17,7 +17,7 @@ from aiohttp import web
 from config import BOT_TOKEN, ADMIN_ID
 
 # 🔥 БАЗА
-from db import init_db, add_user, get_subscriptions, toggle_subscription, clear_subscriptions
+from db import init_db, add_user, get_subscriptions, toggle_subscription, clear_subscriptions, get_users_by_categories
 
 logging.basicConfig(level=logging.INFO)
 
