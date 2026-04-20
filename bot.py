@@ -11,13 +11,20 @@ from aiogram.types import (
 )
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiohttp import web
 
 from config import BOT_TOKEN, ADMIN_ID
 
 # 🔥 БАЗА
-from db import init_db, add_user, get_subscriptions, toggle_subscription, clear_subscriptions, get_users_by_categories
+from db import (
+    init_db,
+    add_user,
+    get_subscriptions,
+    toggle_subscription,
+    clear_subscriptions,
+    get_users_by_categories
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -208,6 +215,56 @@ async def admin_reply(message: Message):
 
     await message.bot.send_message(user_id, message.text)
 
+# ---------------- РАССЫЛКА ----------------
+
+@router.message(Command("send"))
+async def send_broadcast(message: Message, command: CommandObject):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    args = command.args
+
+    if not args:
+        await message.answer("Формат: /send категории текст")
+        return
+
+    try:
+        parts = args.split(" ", 1)
+        categories = parts[0].split(",")
+        text = parts[1]
+    except:
+        await message.answer("Ошибка формата")
+        return
+
+    valid = [c for c in categories if c in CATEGORIES]
+
+    if not valid:
+        await message.answer("Нет валидных категорий")
+        return
+
+    users = await get_users_by_categories(valid)
+
+    if not users:
+        await message.answer("Нет пользователей")
+        return
+
+    sent = 0
+    failed = 0
+
+    await message.answer(f"Рассылка: {len(users)} пользователей")
+
+    for user_id in users:
+        try:
+            await message.bot.send_message(user_id, text)
+            sent += 1
+            await asyncio.sleep(0.05)
+        except:
+            failed += 1
+
+    await message.answer(
+        f"Готово\nОтправлено: {sent}\nОшибки: {failed}"
+    )
+
 # ---------------- WEB SERVER ----------------
 
 async def handle(request):
@@ -232,7 +289,6 @@ async def main():
 
     dp.include_router(router)
 
-    # 🔥 ИНИЦИАЛИЗАЦИЯ БАЗЫ
     await init_db()
 
     print("Бот запущен")
