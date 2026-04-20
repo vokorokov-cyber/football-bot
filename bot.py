@@ -16,7 +16,6 @@ from aiohttp import web
 
 from config import BOT_TOKEN, ADMIN_ID
 
-# 🔥 БАЗА
 from db import (
     init_db,
     add_user,
@@ -39,7 +38,7 @@ CATEGORIES = {
     "u20": "🧑‍🦱 До 20",
 }
 
-# ---------------- SUPPORT MAP ----------------
+# ---------------- SUPPORT ----------------
 
 support_map = {}
 
@@ -196,10 +195,14 @@ async def support_msg(message: Message, state: FSMContext):
 
     await state.clear()
 
-# ---------------- ОТВЕТ КАК ЧАТ ----------------
+# ---------------- ОТВЕТ КАК ЧАТ (FIX) ----------------
 
 @router.message()
 async def admin_reply(message: Message):
+    # ❗ НЕ трогаем команды
+    if message.text and message.text.startswith("/"):
+        return
+
     if message.from_user.id != ADMIN_ID:
         return
 
@@ -239,16 +242,13 @@ async def send_broadcast(message: Message, command: CommandObject):
     valid = [c for c in categories if c in CATEGORIES]
 
     if not valid:
-        await message.answer(f"Нет валидных категорий\nДоступно: {list(CATEGORIES.keys())}")
+        await message.answer("Нет валидных категорий")
         return
 
     users = await get_users_by_categories(valid)
 
-    print("CATEGORIES:", valid)
-    print("USERS:", users)
-
     if not users:
-        await message.answer("❌ Нет пользователей для рассылки")
+        await message.answer("Нет пользователей")
         return
 
     sent = 0
@@ -261,14 +261,11 @@ async def send_broadcast(message: Message, command: CommandObject):
             await message.bot.send_message(user_id, text)
             sent += 1
             await asyncio.sleep(0.05)
-        except Exception as e:
-            print("ERROR:", e)
+        except:
             failed += 1
 
     await message.answer(
-        f"✅ Готово\n\n"
-        f"Отправлено: {sent}\n"
-        f"Ошибки: {failed}"
+        f"✅ Готово\nОтправлено: {sent}\nОшибки: {failed}"
     )
 
 # ---------------- WEB SERVER ----------------
