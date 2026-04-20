@@ -197,16 +197,9 @@ async def support_msg(message: Message, state: FSMContext):
 
 # ---------------- ОТВЕТ КАК ЧАТ (FIX) ----------------
 
-@router.message()
+@router.message(F.reply_to_message)
 async def admin_reply(message: Message):
-    # ❗ НЕ трогаем команды
-    if message.text and message.text.startswith("/"):
-        return
-
     if message.from_user.id != ADMIN_ID:
-        return
-
-    if not message.reply_to_message:
         return
 
     replied_id = message.reply_to_message.message_id
