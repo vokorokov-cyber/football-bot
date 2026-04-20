@@ -239,30 +239,36 @@ async def send_broadcast(message: Message, command: CommandObject):
     valid = [c for c in categories if c in CATEGORIES]
 
     if not valid:
-        await message.answer("Нет валидных категорий")
+        await message.answer(f"Нет валидных категорий\nДоступно: {list(CATEGORIES.keys())}")
         return
 
     users = await get_users_by_categories(valid)
 
+    print("CATEGORIES:", valid)
+    print("USERS:", users)
+
     if not users:
-        await message.answer("Нет пользователей")
+        await message.answer("❌ Нет пользователей для рассылки")
         return
 
     sent = 0
     failed = 0
 
-    await message.answer(f"Рассылка: {len(users)} пользователей")
+    await message.answer(f"🚀 Рассылка: {len(users)} пользователей")
 
     for user_id in users:
         try:
             await message.bot.send_message(user_id, text)
             sent += 1
             await asyncio.sleep(0.05)
-        except:
+        except Exception as e:
+            print("ERROR:", e)
             failed += 1
 
     await message.answer(
-        f"Готово\nОтправлено: {sent}\nОшибки: {failed}"
+        f"✅ Готово\n\n"
+        f"Отправлено: {sent}\n"
+        f"Ошибки: {failed}"
     )
 
 # ---------------- WEB SERVER ----------------
